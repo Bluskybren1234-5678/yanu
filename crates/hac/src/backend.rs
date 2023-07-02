@@ -170,16 +170,16 @@ pub mod build {
     use common::{defines::APP_CACHE_DIR, utils::move_file};
     use eyre::{bail, eyre};
     use fs_err as fs;
-    use tracing::info;
+    use tracing::{debug, info};
 
     use super::*;
 
     static NPROC: Lazy<Result<u8>> = Lazy::new(|| {
-        Ok(
-            String::from_utf8_lossy(&Command::new("nproc").output()?.stdout)
-                .trim()
-                .parse()?,
-        )
+        let nproc = String::from_utf8_lossy(&Command::new("nproc").output()?.stdout)
+            .trim()
+            .parse()?;
+        debug!(nproc);
+        Ok(nproc)
     });
 
     pub fn hacpack(rev: &str) -> Result<PathBuf> {
@@ -296,11 +296,9 @@ pub mod build {
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     pub fn hac2l<I, S>(args: I, atmosphere_rev: &str, hac2l_rev: &str) -> Result<PathBuf>
     where
-        I: IntoIterator<Item = S>,
+        I: IntoIterator<Item = S> + fmt::Debug,
         S: AsRef<OsStr>,
     {
-        use tracing::debug;
-
         let kind = BackendKind::Hac2l;
         info!("Building {}", kind);
         let src_dir = tempdir()?;
@@ -337,11 +335,14 @@ pub mod build {
 
         info!("Running make");
 
+        let args_ = [
+            "-j",
+            &(NPROC.as_ref().map_err(|err| eyre!(err))? / 2).to_string(),
+        ];
+        debug!(?args_, ?args, ?hac2l_src_dir, "make");
+
         if !Command::new("make")
-            .args([
-                "-j",
-                &(NPROC.as_ref().map_err(|err| eyre!(err))? / 2).to_string(),
-            ])
+            .args(args_)
             .args(args)
             .current_dir(&hac2l_src_dir)
             .status()?
